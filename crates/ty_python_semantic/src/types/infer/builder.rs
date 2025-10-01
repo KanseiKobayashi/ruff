@@ -5350,22 +5350,28 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
         collection_class: KnownClass,
     ) -> Option<Type<'db>> {
         // Extract the type variable `T` from `list[T]` in typeshed.
-        fn elt_tys(
+        fn elt_tys<'db>(
             collection_class: KnownClass,
-            db: &dyn Db,
+            db: &'db dyn Db,
         ) -> Option<(
-            ClassLiteral<'_>,
-            impl Iterator<Item = BoundTypeVarInstance<'_>> + Clone,
+            ClassLiteral<'db>,
+            GenericContext<'db>,
+            impl Iterator<Item = BoundTypeVarInstance<'db>> + Clone,
         )> {
             let class_literal = collection_class.try_to_class_literal(db)?;
             let generic_context = class_literal.generic_context(db)?;
-            Some((class_literal, generic_context.variables(db)))
+            Some((
+                class_literal,
+                generic_context,
+                generic_context.variables(db),
+            ))
         }
 
-        let (class_literal, elt_tys) = elt_tys(collection_class, self.db()).unwrap_or_else(|| {
-            let name = collection_class.name(self.db());
-            panic!("Typeshed should always have a `{name}` class in `builtins.pyi`")
-        });
+        let (class_literal, generic_context, elt_tys) = elt_tys(collection_class, self.db())
+            .unwrap_or_else(|| {
+                let name = collection_class.name(self.db());
+                panic!("Typeshed should always have a `{name}` class in `builtins.pyi`")
+            });
 
         // Extract the annotated type of `T`, if provided.
         let annotated_elt_tys = tcx
@@ -5373,7 +5379,8 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             .map(|specialization| specialization.types(self.db()));
 
         // Create a set of constraints to infer a precise type for `T`.
-        let mut builder = SpecializationBuilder::new(self.db());
+        let mut builder =
+            SpecializationBuilder::new(self.db(), generic_context.inferable_typevars(self.db()));
 
         match annotated_elt_tys {
             // The annotated type acts as a constraint for `T`.
@@ -5438,8 +5445,8 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             }
         }
 
-        let class_type = class_literal
-            .apply_specialization(self.db(), |generic_context| builder.build(generic_context));
+        let class_type =
+            class_literal.apply_specialization(self.db(), |_| builder.build(generic_context));
 
         Type::from(class_type).to_instance(self.db())
     }
