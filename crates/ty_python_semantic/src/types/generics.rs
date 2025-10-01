@@ -551,6 +551,7 @@ fn is_subtype_in_invariant_position<'db>(
     derived_materialization: MaterializationKind,
     base_type: &Type<'db>,
     base_materialization: MaterializationKind,
+    inferable: Option<GenericContext<'db>>,
     visitor: &HasRelationToVisitor<'db>,
 ) -> ConstraintSet<'db> {
     let derived_top = derived_type.top_materialization(db);
@@ -571,7 +572,7 @@ fn is_subtype_in_invariant_position<'db>(
             return ConstraintSet::from(true);
         }
 
-        derived.has_relation_to_impl(db, base, TypeRelation::Subtyping, visitor)
+        derived.has_relation_to_impl(db, base, inferable, TypeRelation::Subtyping, visitor)
     };
     match (derived_materialization, base_materialization) {
         // `Derived` is a subtype of `Base` if the range of materializations covered by `Derived`
@@ -619,6 +620,7 @@ fn has_relation_in_invariant_position<'db>(
     derived_materialization: Option<MaterializationKind>,
     base_type: &Type<'db>,
     base_materialization: Option<MaterializationKind>,
+    inferable: Option<GenericContext<'db>>,
     relation: TypeRelation,
     visitor: &HasRelationToVisitor<'db>,
 ) -> ConstraintSet<'db> {
@@ -631,6 +633,7 @@ fn has_relation_in_invariant_position<'db>(
             derived_mat,
             base_type,
             base_mat,
+            inferable,
             visitor,
         ),
         // Subtyping between invariant type parameters without a top/bottom materialization necessitates
@@ -646,9 +649,9 @@ fn has_relation_in_invariant_position<'db>(
         // `list[Any]`, because `Any` is assignable to `list[Any]` and `list[Any]` is assignable to
         // `Any`.
         (None, None, relation) => derived_type
-            .has_relation_to_impl(db, *base_type, relation, visitor)
+            .has_relation_to_impl(db, *base_type, inferable, relation, visitor)
             .and(db, || {
-                base_type.has_relation_to_impl(db, *derived_type, relation, visitor)
+                base_type.has_relation_to_impl(db, *derived_type, inferable, relation, visitor)
             }),
         // For gradual types, A <: B (subtyping) is defined as Top[A] <: Bottom[B]
         (None, Some(base_mat), TypeRelation::Subtyping) => is_subtype_in_invariant_position(
@@ -657,6 +660,7 @@ fn has_relation_in_invariant_position<'db>(
             MaterializationKind::Top,
             base_type,
             base_mat,
+            inferable,
             visitor,
         ),
         (Some(derived_mat), None, TypeRelation::Subtyping) => is_subtype_in_invariant_position(
@@ -665,6 +669,7 @@ fn has_relation_in_invariant_position<'db>(
             derived_mat,
             base_type,
             MaterializationKind::Bottom,
+            inferable,
             visitor,
         ),
         // And A <~ B (assignability) is Bottom[A] <: Top[B]
@@ -674,6 +679,7 @@ fn has_relation_in_invariant_position<'db>(
             MaterializationKind::Bottom,
             base_type,
             base_mat,
+            inferable,
             visitor,
         ),
         (Some(derived_mat), None, TypeRelation::Assignability) => is_subtype_in_invariant_position(
@@ -682,6 +688,7 @@ fn has_relation_in_invariant_position<'db>(
             derived_mat,
             base_type,
             MaterializationKind::Top,
+            inferable,
             visitor,
         ),
     }
@@ -916,6 +923,7 @@ impl<'db> Specialization<'db> {
         self,
         db: &'db dyn Db,
         other: Self,
+        inferable: Option<GenericContext<'db>>,
         relation: TypeRelation,
         visitor: &HasRelationToVisitor<'db>,
     ) -> ConstraintSet<'db> {
@@ -926,7 +934,7 @@ impl<'db> Specialization<'db> {
 
         if let (Some(self_tuple), Some(other_tuple)) = (self.tuple_inner(db), other.tuple_inner(db))
         {
-            return self_tuple.has_relation_to_impl(db, other_tuple, relation, visitor);
+            return self_tuple.has_relation_to_impl(db, other_tuple, inferable, relation, visitor);
         }
 
         let self_materialization_kind = self.materialization_kind(db);
@@ -950,14 +958,15 @@ impl<'db> Specialization<'db> {
                     self_materialization_kind,
                     other_type,
                     other_materialization_kind,
+                    inferable,
                     relation,
                     visitor,
                 ),
                 TypeVarVariance::Covariant => {
-                    self_type.has_relation_to_impl(db, *other_type, relation, visitor)
+                    self_type.has_relation_to_impl(db, *other_type, inferable, relation, visitor)
                 }
                 TypeVarVariance::Contravariant => {
-                    other_type.has_relation_to_impl(db, *self_type, relation, visitor)
+                    other_type.has_relation_to_impl(db, *self_type, inferable, relation, visitor)
                 }
                 TypeVarVariance::Bivariant => ConstraintSet::from(true),
             };
@@ -973,6 +982,7 @@ impl<'db> Specialization<'db> {
         self,
         db: &'db dyn Db,
         other: Specialization<'db>,
+        inferable: Option<GenericContext<'db>>,
         visitor: &IsEquivalentVisitor<'db>,
     ) -> ConstraintSet<'db> {
         if self.materialization_kind(db) != other.materialization_kind(db) {
@@ -998,7 +1008,7 @@ impl<'db> Specialization<'db> {
                 TypeVarVariance::Invariant
                 | TypeVarVariance::Covariant
                 | TypeVarVariance::Contravariant => {
-                    self_type.is_equivalent_to_impl(db, *other_type, visitor)
+                    self_type.is_equivalent_to_impl(db, *other_type, inferable, visitor)
                 }
                 TypeVarVariance::Bivariant => ConstraintSet::from(true),
             };
@@ -1011,7 +1021,8 @@ impl<'db> Specialization<'db> {
             (Some(_), None) | (None, Some(_)) => return ConstraintSet::from(false),
             (None, None) => {}
             (Some(self_tuple), Some(other_tuple)) => {
-                let compatible = self_tuple.is_equivalent_to_impl(db, other_tuple, visitor);
+                let compatible =
+                    self_tuple.is_equivalent_to_impl(db, other_tuple, inferable, visitor);
                 if result.intersect(db, compatible).is_never_satisfied() {
                     return result;
                 }
