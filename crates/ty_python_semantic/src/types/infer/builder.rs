@@ -3474,7 +3474,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
             | Type::WrapperDescriptor(_)
             | Type::DataclassDecorator(_)
             | Type::DataclassTransformer(_)
-            | Type::NonInferableTypeVar(..)
             | Type::TypeVar(..)
             | Type::AlwaysTruthy
             | Type::AlwaysFalsy
@@ -6984,7 +6983,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                 | Type::BytesLiteral(_)
                 | Type::EnumLiteral(_)
                 | Type::BoundSuper(_)
-                | Type::NonInferableTypeVar(_)
                 | Type::TypeVar(_)
                 | Type::TypeIs(_)
                 | Type::TypedDict(_),
@@ -7355,7 +7353,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                 | Type::BytesLiteral(_)
                 | Type::EnumLiteral(_)
                 | Type::BoundSuper(_)
-                | Type::NonInferableTypeVar(_)
                 | Type::TypeVar(_)
                 | Type::TypeIs(_)
                 | Type::TypedDict(_),
@@ -7385,7 +7382,6 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
                 | Type::BytesLiteral(_)
                 | Type::EnumLiteral(_)
                 | Type::BoundSuper(_)
-                | Type::NonInferableTypeVar(_)
                 | Type::TypeVar(_)
                 | Type::TypeIs(_)
                 | Type::TypedDict(_),
