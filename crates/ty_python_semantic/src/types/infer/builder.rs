@@ -5350,13 +5350,13 @@ impl<'db, 'ast> TypeInferenceBuilder<'db, 'ast> {
         collection_class: KnownClass,
     ) -> Option<Type<'db>> {
         // Extract the type variable `T` from `list[T]` in typeshed.
-        fn elt_tys<'db>(
+        fn elt_tys(
             collection_class: KnownClass,
-            db: &'db dyn Db,
+            db: &dyn Db,
         ) -> Option<(
-            ClassLiteral<'db>,
-            GenericContext<'db>,
-            impl Iterator<Item = BoundTypeVarInstance<'db>> + Clone,
+            ClassLiteral<'_>,
+            GenericContext<'_>,
+            impl Iterator<Item = BoundTypeVarInstance<'_>> + Clone,
         )> {
             let class_literal = collection_class.try_to_class_literal(db)?;
             let generic_context = class_literal.generic_context(db)?;
